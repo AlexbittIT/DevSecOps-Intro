@@ -1,0 +1,38 @@
+# Custom Falco rules for Lab 9
+
+# 9.3 — detect any write to /tmp from inside a container (not on the host)
+- rule: Write to /tmp in container
+  desc: A file under /tmp was opened for writing from inside a container
+  condition: >
+    open_write
+    and container.id != "host"
+    and fd.name startswith /tmp/
+  output: >
+    Write to /tmp inside container
+    (container=%container.name container_id=%container.id image=%container.image.repository
+     user=%user.name uid=%user.uid file=%fd.name proc=%proc.name cmdline=%proc.cmdline)
+  priority: WARNING
+  tags: [container, drift]
+
+# Bonus — likely cryptomining: outbound connect to a common pool port
+# combined with a suspicious process name. Two signals, not one.
+- list: crypto_pool_ports
+  items: [3333, 4444, 5555, 7777, 14444]
+
+- list: crypto_miner_procs
+  items: [xmrig, minerd, cpuminer, ethminer, nheqminer, cryptonight, nc, ncat, netcat]
+
+- rule: Outbound crypto mining connection
+  desc: A process in a container connected out to a typical mining-pool port
+  condition: >
+    evt.type = connect
+    and container.id != "host"
+    and fd.sport in (crypto_pool_ports)
+    and proc.name in (crypto_miner_procs)
+  output: >
+    Outbound connection to crypto-mining pool port
+    (container=%container.name container_id=%container.id image=%container.image.repository
+     proc=%proc.name cmdline=%proc.cmdline user=%user.name
+     connection=%fd.name dest_port=%fd.sport)
+  priority: CRITICAL
+  tags: [network, mitre_command_and_control, cryptomining]
